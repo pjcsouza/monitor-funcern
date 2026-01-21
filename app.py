@@ -1,11 +1,14 @@
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, jsonify, render_template_string
 import requests
 import urllib3
 
-# Desativa avisos de segurança por não verificar o certificado (necessário para sites gov/edu)
+# Desativa avisos de segurança (SSL) para o site da Funcern
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
+
+# URL FIXA (Não precisa mais digitar)
+URL_ALVO_FIXA = "https://funcern.br/concursos/ifpe-docente-2025/"
 
 # --- O SITE (FRONTEND) ---
 HTML_TEMPLATE = """
@@ -14,46 +17,72 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MONITOR IFPE 2025</title>
+    <title>MONITOR IFPE - FUNCERN</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background-color: #f0f2f5; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 600px; margin: auto; }
-        h1 { color: #1a73e8; font-size: 22px; margin-bottom: 5px; }
-        .subtitle { color: #666; margin-bottom: 20px; font-size: 14px; }
-        
-        input { 
-            padding: 12px; width: 90%; margin-bottom: 15px; border: 1px solid #ccc; 
-            border-radius: 6px; font-size: 14px; 
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            text-align: center; 
+            padding: 20px; 
+            background-color: #f0f2f5; 
+            transition: background-color 0.3s;
         }
+
+        /* ANIMAÇÃO DE PISCAR (AMARELO E VERMELHO) */
+        @keyframes piscarAlerta {
+            0% { background-color: #ffeb3b; } /* Amarelo */
+            100% { background-color: #ff0000; } /* Vermelho */
+        }
+
+        .modo-alerta {
+            animation: piscarAlerta 0.5s infinite alternate;
+        }
+
+        .modo-alerta h1, .modo-alerta p, .modo-alerta div {
+            color: black !important; /* Garante leitura no fundo vermelho */
+        }
+
+        .card { 
+            background: white; 
+            padding: 40px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+            max-width: 600px; 
+            margin: auto; 
+            border: 2px solid #ddd;
+        }
+
+        h1 { color: #1a73e8; font-size: 24px; margin-bottom: 10px; }
+        .target-url { font-size: 12px; color: #777; margin-bottom: 20px; word-break: break-all; }
         
         button { 
-            padding: 12px 30px; background-color: #1a73e8; color: white; border: none; 
-            border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; width: 100%;
+            padding: 15px 40px; background-color: #1a73e8; color: white; border: none; 
+            border-radius: 8px; font-size: 18px; cursor: pointer; font-weight: bold; 
+            width: 100%; transition: 0.2s;
         }
         button:hover { background-color: #1557b0; }
-        button:disabled { background-color: #ccc; }
+        button:disabled { background-color: #ccc; cursor: default; }
 
-        #resultadoArea { margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; display: none; }
-        #contador { font-size: 50px; color: #333; font-weight: bold; line-height: 1; }
-        .status { font-size: 12px; color: #888; margin-top: 10px; }
-        .erro-detalhe { color: red; font-size: 11px; margin-top: 5px; word-break: break-all; }
+        #resultadoArea { margin-top: 30px; display: none; }
+        #contador { font-size: 80px; color: #333; font-weight: bold; line-height: 1; margin: 10px 0; }
+        .status { font-size: 14px; color: #666; }
+        .erro-detalhe { color: red; font-size: 11px; margin-top: 5px; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>MONITOR IFPE 2025 FUNCERN</h1>
-        <div class="subtitle">Monitorando a palavra <b>"janeiro"</b></div>
+        <h1>MONITOR IFPE 2025</h1>
+        <p>Procurando por: <b>"janeiro"</b></p>
+        <div class="target-url">Alvo: https://funcern.br/concursos/ifpe-docente-2025/</div>
         
-        <input type="text" id="urlAlvo" placeholder="Cole o link (Ex: https://funcern.br/...)" value="">
-        <button id="btnIniciar" onclick="iniciarMonitoramento()">INICIAR AGORA</button>
+        <button id="btnIniciar" onclick="iniciarMonitoramento()">INICIAR RASTREAMENTO</button>
 
         <div id="resultadoArea">
             <div>Ocorrências encontradas:</div>
             <div id="contador">--</div>
             <div class="status">
                 <span id="statusTexto" style="color:orange">Conectando...</span><br>
-                Atualizado às: <span id="hora">--:--:--</span>
+                Última checagem: <span id="hora">--:--:--</span>
             </div>
             <div id="msgErro" class="erro-detalhe"></div>
         </div>
@@ -63,29 +92,19 @@ HTML_TEMPLATE = """
         let intervaloID = null;
 
         function iniciarMonitoramento() {
-            let url = document.getElementById('urlAlvo').value.trim();
             const btn = document.getElementById('btnIniciar');
             const msgErro = document.getElementById('msgErro');
 
-            if (!url) { alert("Cole o link primeiro!"); return; }
-            
-            if (!url.startsWith('http')) {
-                url = 'https://' + url;
-                document.getElementById('urlAlvo').value = url;
-            }
-
-            btn.innerText = "MONITORANDO...";
+            btn.innerText = "MONITORANDO EM TEMPO REAL...";
             btn.disabled = true; 
             document.getElementById('resultadoArea').style.display = 'block';
-            msgErro.innerText = "";
 
             const buscarDados = async () => {
                 const statusTexto = document.getElementById('statusTexto');
-                statusTexto.innerText = "Checando...";
-                statusTexto.style.color = "orange";
-
+                
                 try {
-                    const resposta = await fetch(`/api/contar?url=${encodeURIComponent(url)}&palavra=janeiro`);
+                    // Chama a API interna
+                    const resposta = await fetch(`/api/contar`);
                     const dados = await resposta.json();
 
                     if (dados.erro) {
@@ -96,20 +115,30 @@ HTML_TEMPLATE = """
                         const contadorElem = document.getElementById('contador');
                         const valorAntigo = parseInt(contadorElem.innerText);
                         const valorNovo = dados.quantidade;
+                        const horaAtual = new Date().toLocaleTimeString();
 
+                        // LÓGICA DO ALERTA E PISCAR TELA
                         if (!isNaN(valorAntigo) && valorNovo > valorAntigo) {
-                             statusTexto.innerText = "AUMENTOU! NOVIDADE!";
+                             statusTexto.innerText = "MUDANÇA DETECTADA! EDITAL ATUALIZADO!";
+                             
+                             // Ativa o modo pisca-pisca no corpo do site
+                             document.body.classList.add('modo-alerta');
+                             
+                             // Toca um som de alerta do navegador (se permitido)
+                             alert("ALERTA! A QUANTIDADE MUDOU PARA " + valorNovo);
+                        } 
+                        else if (isNaN(valorAntigo)) {
+                             statusTexto.innerText = "Monitoramento ativo. Aguardando mudanças...";
                              statusTexto.style.color = "green";
-                             alert("ATENÇÃO: A palavra 'janeiro' apareceu mais vezes!");
-                        } else if (!isNaN(valorAntigo) && valorNovo !== valorAntigo) {
-                             statusTexto.innerText = "Mudou a quantidade";
-                        } else {
-                             statusTexto.innerText = "Sem alterações";
+                        }
+                        else {
+                             // Resetar texto se estiver normal
+                             statusTexto.innerText = "Nenhuma alteração detectada.";
                              statusTexto.style.color = "#888";
                         }
 
                         contadorElem.innerText = valorNovo;
-                        document.getElementById('hora').innerText = new Date().toLocaleTimeString();
+                        document.getElementById('hora').innerText = horaAtual;
                         msgErro.innerText = "";
                     }
                     
@@ -119,6 +148,7 @@ HTML_TEMPLATE = """
                 }
             };
 
+            // Executa a primeira vez e agenda
             buscarDados();
             intervaloID = setInterval(buscarDados, 5000); // 5 segundos
         }
@@ -134,11 +164,6 @@ def home():
 # --- BACKEND ---
 @app.route('/api/contar')
 def contar_palavra():
-    url = request.args.get('url')
-    palavra = request.args.get('palavra', 'janeiro')
-
-    if not url: return jsonify({"erro": "URL vazia"}), 400
-
     try:
         # Cabeçalhos para parecer um navegador real
         headers = {
@@ -146,14 +171,15 @@ def contar_palavra():
             'Referer': 'https://www.google.com/'
         }
 
-        # verify=False ignora erros de certificado SSL
-        resposta = requests.get(url, headers=headers, timeout=15, verify=False)
+        # Conecta no site FIXO
+        resposta = requests.get(URL_ALVO_FIXA, headers=headers, timeout=15, verify=False)
         
         if resposta.status_code != 200:
             return jsonify({"erro": f"Site respondeu com código {resposta.status_code}", "detalhe": f"Status HTTP: {resposta.status_code}"}), 502
 
         conteudo = resposta.text.lower()
-        quantidade = conteudo.count(palavra.lower())
+        # Conta a palavra "janeiro"
+        quantidade = conteudo.count("janeiro")
         
         return jsonify({ "quantidade": quantidade })
 
