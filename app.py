@@ -7,8 +7,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# URL FIXA (Não precisa mais digitar)
+# URL FIXA
 URL_ALVO_FIXA = "https://funcern.br/concursos/ifpe-docente-2025/"
+# PALAVRA A MONITORAR
+PALAVRA_ALVO = "fevereiro"
 
 # --- O SITE (FRONTEND) ---
 HTML_TEMPLATE = """
@@ -38,7 +40,7 @@ HTML_TEMPLATE = """
         }
 
         .modo-alerta h1, .modo-alerta p, .modo-alerta div {
-            color: black !important; /* Garante leitura no fundo vermelho */
+            color: black !important; 
         }
 
         .card { 
@@ -53,6 +55,7 @@ HTML_TEMPLATE = """
 
         h1 { color: #1a73e8; font-size: 24px; margin-bottom: 10px; }
         .target-url { font-size: 12px; color: #777; margin-bottom: 20px; word-break: break-all; }
+        .badge { background: #e3f2fd; color: #1565c0; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
         
         button { 
             padding: 15px 40px; background-color: #1a73e8; color: white; border: none; 
@@ -72,7 +75,7 @@ HTML_TEMPLATE = """
 
     <div class="card">
         <h1>MONITOR IFPE 2025</h1>
-        <p>Procurando por: <b>"janeiro"</b></p>
+        <p>Procurando por: <span class="badge">fevereiro</span></p>
         <div class="target-url">Alvo: https://funcern.br/concursos/ifpe-docente-2025/</div>
         
         <button id="btnIniciar" onclick="iniciarMonitoramento()">INICIAR RASTREAMENTO</button>
@@ -95,7 +98,7 @@ HTML_TEMPLATE = """
             const btn = document.getElementById('btnIniciar');
             const msgErro = document.getElementById('msgErro');
 
-            btn.innerText = "MONITORANDO EM TEMPO REAL...";
+            btn.innerText = "MONITORANDO...";
             btn.disabled = true; 
             document.getElementById('resultadoArea').style.display = 'block';
 
@@ -103,7 +106,6 @@ HTML_TEMPLATE = """
                 const statusTexto = document.getElementById('statusTexto');
                 
                 try {
-                    // Chama a API interna
                     const resposta = await fetch(`/api/contar`);
                     const dados = await resposta.json();
 
@@ -117,23 +119,18 @@ HTML_TEMPLATE = """
                         const valorNovo = dados.quantidade;
                         const horaAtual = new Date().toLocaleTimeString();
 
-                        // LÓGICA DO ALERTA E PISCAR TELA
+                        // SE O VALOR AUMENTAR: PISCA TELA + ALERTA
                         if (!isNaN(valorAntigo) && valorNovo > valorAntigo) {
-                             statusTexto.innerText = "MUDANÇA DETECTADA! EDITAL ATUALIZADO!";
-                             
-                             // Ativa o modo pisca-pisca no corpo do site
+                             statusTexto.innerText = "MUDANÇA CRÍTICA DETECTADA!";
                              document.body.classList.add('modo-alerta');
-                             
-                             // Toca um som de alerta do navegador (se permitido)
-                             alert("ALERTA! A QUANTIDADE MUDOU PARA " + valorNovo);
+                             alert("ATENÇÃO! A palavra 'fevereiro' aumentou para " + valorNovo);
                         } 
                         else if (isNaN(valorAntigo)) {
-                             statusTexto.innerText = "Monitoramento ativo. Aguardando mudanças...";
+                             statusTexto.innerText = "Monitoramento ativo.";
                              statusTexto.style.color = "green";
                         }
                         else {
-                             // Resetar texto se estiver normal
-                             statusTexto.innerText = "Nenhuma alteração detectada.";
+                             statusTexto.innerText = "Sem alterações.";
                              statusTexto.style.color = "#888";
                         }
 
@@ -148,9 +145,8 @@ HTML_TEMPLATE = """
                 }
             };
 
-            // Executa a primeira vez e agenda
             buscarDados();
-            intervaloID = setInterval(buscarDados, 5000); // 5 segundos
+            intervaloID = setInterval(buscarDados, 5000); 
         }
     </script>
 </body>
@@ -165,21 +161,19 @@ def home():
 @app.route('/api/contar')
 def contar_palavra():
     try:
-        # Cabeçalhos para parecer um navegador real
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://www.google.com/'
         }
 
-        # Conecta no site FIXO
         resposta = requests.get(URL_ALVO_FIXA, headers=headers, timeout=15, verify=False)
         
         if resposta.status_code != 200:
             return jsonify({"erro": f"Site respondeu com código {resposta.status_code}", "detalhe": f"Status HTTP: {resposta.status_code}"}), 502
 
         conteudo = resposta.text.lower()
-        # Conta a palavra "janeiro"
-        quantidade = conteudo.count("janeiro")
+        # AGORA CONTA "FEVEREIRO"
+        quantidade = conteudo.count(PALAVRA_ALVO)
         
         return jsonify({ "quantidade": quantidade })
 
