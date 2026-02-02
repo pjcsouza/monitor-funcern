@@ -146,7 +146,7 @@ HTML_TEMPLATE = """
             };
 
             buscarDados();
-            intervaloID = setInterval(buscarDados, 5000); 
+            intervaloID = setInterval(buscarDados, 10000); 
         }
     </script>
 </body>
